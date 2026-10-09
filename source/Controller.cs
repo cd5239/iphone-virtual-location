@@ -20,7 +20,7 @@ partial class Controller {
  Process engine;JavaScriptSerializer json=new JavaScriptSerializer();Forms.NotifyIcon tray;UiState state=new UiState();StatusToast toast=new StatusToast();bool exiting,autoApply;long nextId;DateTime lastProbe=DateTime.MinValue,launched,probeStarted;
  DispatcherTimer timer;EventWaitHandle applySignal,showSignal;RegisteredWaitHandle applyWait,showWait;
  public Controller(bool background){
-  autoApply=background;Window=App.Load();Window.Title="iPhone 虚拟定位 · 2.4.2";Window.Icon=System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(App.Root,"source","app.ico")));Window.MaxHeight=SystemParameters.WorkArea.Height-30;
+  autoApply=background;Window=App.Load();Window.Title="iPhone 虚拟定位 · 2.4.3";Window.Icon=System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(App.Root,"source","app.ico")));Window.MaxHeight=SystemParameters.WorkArea.Height-30;
   place=Get<TextBox>("Place");longitude=Get<TextBox>("Longitude");latitude=Get<TextBox>("Latitude");source=Get<ComboBox>("Source");status=Get<TextBlock>("Status");device=Get<TextBlock>("Device");
   deviceHeading=Get<TextBlock>("DeviceHeading");statusHeading=Get<TextBlock>("StatusHeading");lastResult=Get<TextBlock>("LastResult");elapsed=Get<TextBlock>("Elapsed");progress=Get<ProgressBar>("Progress");deviceCard=Get<Border>("DeviceCard");resultCard=Get<Border>("ResultCard");
   apply=Get<Button>("Apply");restore=Get<Button>("Restore");save=Get<Button>("Save");refresh=Get<Button>("Refresh");InitLocationControls();
