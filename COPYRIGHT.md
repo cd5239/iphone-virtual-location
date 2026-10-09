@@ -1,6 +1,6 @@
 # 版权与许可证
 
-Copyright (C) 2026 cd5239
+Copyright (C) 2026 Chengdu Wu Er San Jiu Technology Co., Lt
 
 本仓库自有源码及项目文档依据 **GNU GPL-3.0-or-later** 授权：你可以按自由软件基金会发布的 GNU GPL 第 3 版或任何后续版本再分发、修改。完整条款见 [LICENSE](LICENSE)。
 
