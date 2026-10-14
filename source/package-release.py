@@ -7,7 +7,7 @@ import zipfile
 
 ROOT_FILES = (
     'iPhone虚拟定位.exe', '一键修改.exe', 'README.md', 'LICENSE',
-    'COPYRIGHT.md', 'SOURCE.md',
+    'COPYRIGHT.md', 'SOURCE.md', 'VERSION.txt',
 )
 ROOT_DIRS = ('docs', 'engine', 'source')
 RUNTIME_FILES = (
@@ -28,7 +28,7 @@ def package(root: Path, output: Path) -> None:
     for name in ROOT_DIRS:
         if not (root / name).is_dir():
             raise FileNotFoundError(f'Required release directory is missing: {name}')
-    for name in ('state', 'location.xml', 'locations.xml', 'locations.xml.bak'):
+    for name in ('state', 'location.xml', 'locations.xml', 'locations.xml.bak', 'connection-mode.txt', 'wifi-host.txt'):
         if (root / name).exists():
             raise ValueError(f'Private runtime data in release directory: {name}')
 

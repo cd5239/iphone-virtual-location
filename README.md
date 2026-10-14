@@ -1,10 +1,12 @@
 # iPhone 虚拟定位
 
-一个 Windows 桌面工具，通过 USB 连接 iPhone 的开发者定位服务，手动设置或清除模拟位置。主界面可管理多个常用地点；“一键修改”入口使用当前选中的地点，并在通知区域保持运行。当前版本为 2.4。
+一个 Windows 桌面工具，连接 iPhone 的开发者定位服务，手动设置或清除模拟位置。主界面可管理多个常用地点；“一键修改”入口使用当前选中的地点，并在通知区域保持运行。当前分支为 **2.5.0-beta.2 无线测试版**，基于公开稳定版 2.4.3。
 
 ## 下载与首次使用
 
-从 [Releases](https://github.com/cd5239/iphone-virtual-location/releases) 下载 `iphone-virtual-location-v2.4.3-win64.zip`，完整解压后再运行。需要 Windows 10/11 64 位、.NET Framework 4.x、Apple 设备驱动及服务、USB 数据线，以及已开启开发者模式并信任此电脑的 iPhone。连接组件已包含 Python，无需用户另装。v2.4.3 补齐了 v2.4.2 下载包遗漏的 Wintun DLL；定位功能未改。
+本测试版尚未发布到公开 [Releases](https://github.com/cd5239/iphone-virtual-location/releases)。完整解压测试 ZIP 后再运行。需要 Windows 10/11 64 位、.NET Framework 4.x、Apple 设备驱动及服务，以及已开启开发者模式并信任此电脑的 iPhone。首次无线准备需用 USB，随后可尝试 Wi-Fi。连接组件已包含 Python，无需用户另装。稳定版 2.4.3 保持不变。
+
+无线测试步骤见 [2.5 测试说明](docs/WIRELESS-TEST.md)。若 Apple 设备服务无法自动发现无线手机，可填写手机当前 Wi-Fi IP，程序对该地址单播查询并验证已有配对。先退出稳定版托盘，再运行测试版；不要同时控制同一台手机。
 
 1. 解锁手机，用 USB 连接电脑，并在手机上确认“信任此电脑”。
 2. 打开 `iPhone虚拟定位.exe`，输入地点名称、经纬度及坐标来源，然后保存地点。
@@ -19,7 +21,7 @@
 - 坐标来源可选 BD-09、GCJ-02、WGS84；向设备发送前换算为 WGS84。转换为近似计算，落点须在手机地图确认。
 - 手机服务接受修改指令后，界面会显示结果；地图 App 可能需要刷新。
 - “恢复真实定位”接口没有设备回执，程序发送停止模拟指令并等待后会提示**待手机确认**，不能据此断言 GPS 已恢复。
-- 已在一台 iPhone 16 / iOS 26.6.2 上验证 USB 连接、发送定位和恢复指令；其他机型、新电脑环境及地图最终落点未完成实测。
+- 稳定版曾在一台 iPhone 16 / iOS 26.6.2 上验证 USB 连接及发送定位、恢复指令；本测试版的无线识别和无线定位仍待实机验证。
 
 本工具不要求打开其他手机助手界面，不调用地图地址搜索服务，也不上传地点数据。连接依赖 Apple 设备驱动和 [`pymobiledevice3`](https://github.com/doronz88/pymobiledevice3)。
 
@@ -31,11 +33,11 @@
 
 ## 从源码构建
 
-界面使用 Windows .NET Framework C# 编译器构建；连接引擎使用 Python 3.12、`pymobiledevice3==11.17.0` 和 `pyinstaller==6.22.3`。在 Windows PowerShell 中：
+界面使用 Windows .NET Framework C# 编译器构建；连接引擎使用 Python 3.13（无线隧道需要原生 TLS-PSK）、`pymobiledevice3==11.17.0` 和 `pyinstaller==6.22.3`。在 Windows PowerShell 中：
 
 ```powershell
 .\source\build-ui.ps1
-py -3.12 -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r .\source\requirements-build.txt
 .\source\build-engine.ps1 -Python .\.venv\Scripts\python.exe -BuildDirectory .\build-engine
 New-Item -ItemType Directory -Force .\engine | Out-Null

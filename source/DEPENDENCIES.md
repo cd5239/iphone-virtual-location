@@ -2,6 +2,8 @@
 
 Installed build-environment licenses; the packaged engine includes the subset it imports.
 
+2.5.0-beta.2 uses the official CPython 3.13.16 Windows runtime for native TLS-PSK support. Its license is in `third-party-licenses/python-3.13.txt`. The list below records the earlier full build environment; the beta.2 engine is assembled from the modules imported by its PyInstaller build.
+
 - aiofiles 25.1.0
 - altgraph 0.17.5
 - annotated-doc 0.0.5

@@ -16,5 +16,7 @@ static class UiStateTests {
   s.Handle(Msg("error",6,"apply","session_ended",true));Check(!s.Busy&&s.Tone=="error"&&s.NoticeTone=="error","Failures must be visible");
   s.Begin("clear",7);s.Handle(Msg("restored",7,"clear"));Check(!s.Active&&!s.Busy&&s.Tone=="pending"&&s.Title.Contains("待手机确认"),"No-reply restore must not claim verified GPS");
   s.Begin("probe",8);s.Handle(Msg("device",8,"probe","connection","connected","usable",true,"active",false));Check(s.Tone=="pending","Probe must preserve pending GPS verification");
+  s.Begin("enable_wifi",9);s.Handle(Msg("wifi_enabled",9,"enable_wifi"));Check(!s.Busy&&s.Title=="有线准备完成 · 待无线验证"&&s.Tone=="success","Wireless setup completion is distinct from location apply");
+  s.Begin("probe",10);s.Handle(Msg("device",10,"probe","connection","connected","transport","Network","usable",true,"active",false));Check(s.Transport=="Network","Wireless transport should be visible");
  }
 }

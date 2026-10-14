@@ -4,9 +4,10 @@ import io
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch,AsyncMock
 from coordinates import validate,to_wgs,wgs_to_gcj
 from engine import Engine,UserError
+import wifi_unicast
 
 class CoordinateTests(unittest.TestCase):
     def test_invalid_never_accepted(self):
@@ -15,13 +16,84 @@ class CoordinateTests(unittest.TestCase):
     def test_wgs_not_converted(self):
         self.assertEqual(to_wgs(-122.03,37.33,'WGS84'),(-122.03,37.33))
     def test_gcj_inverse_roundtrip(self):
-        for original in [(113.27,23.13),(116.3,39.9),(121.5,31.2)]:
+        for original in [(104.01,30.8),(116.3,39.9),(121.5,31.2)]:
             converted=to_wgs(*wgs_to_gcj(*original),'GCJ02')
             for a,b in zip(original,converted):self.assertAlmostEqual(a,b,places=7)
     def test_invalid_source(self):
         with self.assertRaises(ValueError):to_wgs(103,30,'UNKNOWN')
 
 class EngineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_manual_ip_discovery_selects_only_paired_phone(self):
+        e=Engine();await e.set_mode('Network','192.0.2.15')
+        async def found(host):
+            self.assertEqual(host,'192.0.2.15')
+            return 'phone',12345
+        async def inventory():return []
+        e.all_devices=inventory
+        with patch('engine.discover',side_effect=found):
+            self.assertEqual(await e.select(),'phone')
+        self.assertEqual(e.wifi_port,12345)
+    async def test_manual_ip_probe_requires_working_tunnel(self):
+        e=Engine();e.mode='Network';e.wifi_host='192.0.2.15'
+        async def devices():return [SimpleNamespace(serial='phone')]
+        async def cable(serial):return False
+        class Lockdown:
+            all_values={'DeviceName':'test'};product_version='26.6.2'
+            async def __aenter__(self):return self
+            async def __aexit__(self,*a):pass
+        async def lockdown(serial):return Lockdown()
+        async def bad_tunnel(serial):raise ConnectionError('tunnel failed')
+        e.devices=devices;e.cable_present=cable;e.lockdown=lockdown;e.open_channel=bad_tunnel
+        with contextlib.redirect_stdout(io.StringIO()) as output:await e.probe()
+        self.assertFalse(json.loads(output.getvalue().splitlines()[0])['usable'])
+    async def test_wireless_selection_excludes_usb_and_requires_unplug(self):
+        e=Engine();e.mode='Network'
+        both=[SimpleNamespace(serial='phone',connection_type='USB'),SimpleNamespace(serial='phone',connection_type='Network')]
+        async def inventory():return both
+        e.all_devices=inventory
+        with self.assertRaisesRegex(UserError,'拔线'):await e.select()
+        both.pop(0)
+        self.assertEqual(await e.select(),'phone')
+    async def test_wireless_probe_reports_transport(self):
+        e=Engine();e.mode='Network'
+        async def inventory():return [SimpleNamespace(serial='phone',connection_type='Network')]
+        class Lockdown:
+            all_values={'DeviceName':'test'};product_version='26.6.2'
+            async def __aenter__(self):return self
+            async def __aexit__(self,*a):pass
+        async def lockdown(serial):return Lockdown()
+        e.all_devices=inventory;e.lockdown=lockdown
+        with contextlib.redirect_stdout(io.StringIO()) as output:await e.probe()
+        result=json.loads(output.getvalue().splitlines()[0])
+        self.assertEqual(result['transport'],'Network');self.assertTrue(result['usable'])
+    async def test_invalid_mode_rejected_without_mutation(self):
+        e=Engine()
+        with self.assertRaises(UserError):await e.set_mode('Other')
+        self.assertEqual(e.mode,'USB')
+    async def test_wifi_setup_only_with_one_usb_phone(self):
+        e=Engine()
+        async def inventory():return [SimpleNamespace(serial='phone',connection_type='Network')]
+        with patch('pymobiledevice3.usbmux.list_devices',side_effect=inventory):
+            with self.assertRaises(UserError):await e.enable_wifi()
+    async def test_wifi_setup_enables_and_prepares_remote_pairing(self):
+        calls=[];e=Engine()
+        async def inventory():return [SimpleNamespace(serial='phone',connection_type='USB')]
+        class Lockdown:
+            async def __aenter__(self):return self
+            async def __aexit__(self,*a):pass
+            async def set_enable_wifi_connections(self,value):calls.append(('wifi',value))
+            async def get_enable_wifi_connections(self):return True
+        async def lockdown(**kwargs):
+            self.assertEqual(kwargs['connection_type'],'USB')
+            return Lockdown()
+        class Pairing:
+            async def connect(self,autopair):calls.append(('pair',autopair))
+            async def close(self):calls.append('close')
+        async def pairing_create(lockdown):return Pairing()
+        with patch('pymobiledevice3.usbmux.list_devices',side_effect=inventory),patch('pymobiledevice3.lockdown.create_using_usbmux',side_effect=lockdown),patch('pymobiledevice3.remote.tunnel_service.RemotePairingLockdownService.create',side_effect=pairing_create),contextlib.redirect_stdout(io.StringIO()) as output:
+            await e.enable_wifi()
+        self.assertEqual(calls,[('wifi',True),('pair',True),'close'])
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['event'],'wifi_enabled')
     async def test_restore_keeps_transport_alive_for_no_reply_command(self):
         calls=[];e=Engine();e.active=True
         class Location:
@@ -100,5 +172,22 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         e.location=Location();e.stack=Stack()
         await e.close()
         self.assertEqual(calls,['clear','close']);self.assertFalse(e.active);self.assertIsNone(e.stack)
+
+class UnicastDiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_rejects_bad_phone_address(self):
+        with self.assertRaises(wifi_unicast.WirelessDiscoveryError):
+            await wifi_unicast.discover('not-an-ip')
+    async def test_uses_only_authenticated_remote_pairing_answer(self):
+        from pymobiledevice3.bonjour import REMOTEPAIRING_SERVICE_NAME,QTYPE_PTR,QTYPE_SRV,QTYPE_TXT
+        target='test.'+REMOTEPAIRING_SERVICE_NAME
+        records=[{'type':QTYPE_PTR,'name':REMOTEPAIRING_SERVICE_NAME,'ptrdname':target},
+                 {'type':QTYPE_SRV,'name':target,'port':12345},
+                 {'type':QTYPE_TXT,'name':target,'txt':{'identifier':'advertised','authTag':'tag'}}]
+        from pymobiledevice3.remote.tunnel_service import PEER_ALT_IRK_KEY
+        pairs=[('trusted',None,{PEER_ALT_IRK_KEY:b'key'})]
+        with patch('pymobiledevice3.pair_records.iter_remote_pair_records_by_identifier',return_value=iter(pairs)),patch('pymobiledevice3.remote.tunnel_service.validate_auth_tag',return_value=True):
+            self.assertEqual(wifi_unicast._match(records),('trusted',12345))
+        with patch('pymobiledevice3.pair_records.iter_remote_pair_records_by_identifier',return_value=iter(pairs)),patch('pymobiledevice3.remote.tunnel_service.validate_auth_tag',return_value=False):
+            with self.assertRaises(wifi_unicast.WirelessDiscoveryError):wifi_unicast._match(records)
 
 if __name__=='__main__':unittest.main()
