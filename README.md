@@ -4,7 +4,7 @@
 
 ## 下载与首次使用
 
-已发布的 Windows 安装包见 [Releases](https://github.com/cd5239/iphone-virtual-location/releases)，2.5.1 对应本地构建和源码验证记录见 [2.5.1 更新](docs/V2.5.1.md)。完整解压 ZIP 后再运行。需要 Windows 10/11 64 位、.NET Framework 4.x、Apple 设备驱动及服务，以及已开启开发者模式并信任此电脑的 iPhone。首次无线准备需用 USB，随后可用 Wi-Fi。连接组件已包含 Python，无需用户另装。
+最新 Windows 安装包：[下载 2.5.1 ZIP](https://github.com/cd5239/iphone-virtual-location/releases/download/v2.5.1/iphone-virtual-location-v2.5.1-win64.zip)。[Release 页面](https://github.com/cd5239/iphone-virtual-location/releases/tag/v2.5.1)附更新说明、第三方对应源码和 SHA-256 清单；验证记录见 [2.5.1 更新](docs/V2.5.1.md)。完整解压 ZIP 后再运行。需要 Windows 10/11 64 位、.NET Framework 4.x、Apple 设备驱动及服务，以及已开启开发者模式并信任此电脑的 iPhone。首次无线准备需用 USB，随后可用 Wi-Fi。连接组件已包含 Python，无需用户另装。
 
 无线步骤见 [Wi-Fi 使用说明](docs/WIRELESS.md)。Wi-Fi 模式留空 IP 时，程序先查 Apple 设备服务；若没有 Network 设备，会主动浏览手机的无线公告并验证已有配对。手动填写 IP 后点击右侧“检测”，会自动切换到 Wi-Fi 并重新识别，无需反复切换连接方式；留空 IP 点击同样支持自动发现。自动和手动路径均须建立完整定位通道才显示可用。先退出旧版托盘，再运行新版；不要同时控制同一台手机。
 
