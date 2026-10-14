@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from coordinates import to_wgs
 from wifi_unicast import WirelessDiscoveryError, discover
+from wifi_discovery import discover_paired
 
 request_id=None
 request_command=None
@@ -28,6 +29,9 @@ class Engine:
         self.mode='USB'
         self.wifi_host=''
         self.wifi_port=None
+        self.wifi_endpoint=''
+        self.wifi_candidates={}
+        self.discovery='usbmux'
         self.device_name='iPhone'
         self.product_version=''
 
@@ -36,13 +40,24 @@ class Engine:
         return await list_devices()
 
     async def devices(self):
+        self.wifi_candidates={}
+        self.wifi_endpoint=''
+        self.wifi_port=None
         if self.mode=='Network' and self.wifi_host:
             try:
                 serial,self.wifi_port=await discover(self.wifi_host)
             except WirelessDiscoveryError as ex:
                 raise UserError(str(ex)) from ex
+            self.wifi_candidates[serial]=((self.wifi_host,self.wifi_port),)
+            self.discovery='manual'
             return [SimpleNamespace(serial=serial,connection_type='Network')]
-        return [d for d in await self.all_devices() if d.connection_type==self.mode]
+        devices=[d for d in await self.all_devices() if d.connection_type==self.mode]
+        self.discovery='usbmux'
+        if self.mode=='Network' and not devices:
+            devices=await discover_paired()
+            self.wifi_candidates={d.serial:d.endpoints for d in devices}
+            self.discovery='mdns'
+        return devices
 
     async def set_mode(self,mode,wifi_host=''):
         if mode not in ('USB','Network'):raise UserError('连接方式无效。')
@@ -52,6 +67,8 @@ class Engine:
             self.mode=mode
             self.wifi_host=wifi_host
             self.wifi_port=None
+            self.wifi_endpoint=''
+            self.wifi_candidates={}
 
     async def cable_present(self,serial):
         return any(d.serial==serial and d.connection_type=='USB' for d in await self.all_devices())
@@ -65,20 +82,54 @@ class Engine:
         return devices[0].serial
 
     async def lockdown(self,serial):
-        if self.mode=='Network' and self.wifi_host:
+        if self.mode=='Network' and self.wifi_endpoint:
             from pymobiledevice3 import common
             from pymobiledevice3.lockdown import create_using_tcp
             from pymobiledevice3.pair_records import get_preferred_pair_record
             pair=await get_preferred_pair_record(serial,common._HOMEFOLDER)
             if pair is None:raise UserError('找不到这台手机的有线信任记录，请重新插线并确认信任。')
-            ld=await create_using_tcp(self.wifi_host,identifier=serial,pair_record=pair,
+            ld=await create_using_tcp(self.wifi_endpoint,identifier=serial,pair_record=pair,
                                       autopair=False,pair_timeout=5,label='iPhone Direct Location')
             if not ld.paired or ld.udid!=serial:
                 await ld.close()
                 raise UserError('无线地址对应的手机与准备时配对的手机不一致。')
             return ld
         from pymobiledevice3.lockdown import create_using_usbmux
-        return await create_using_usbmux(serial=serial,connection_type=self.mode,pair_timeout=10,label='iPhone Direct Location')
+        return await create_using_usbmux(serial=serial,connection_type=self.mode,
+                                        autopair=self.mode=='USB',pair_timeout=10,label='iPhone Direct Location')
+
+    def channel_ready(self):
+        return (self.stack is not None and self.tunnel is not None and self.tunnel.rsd is not None
+                and self.location is not None
+                and not getattr(getattr(self.location,'dtx',None),'_closed',False))
+
+    async def open_network_channel(self,serial):
+        # Selection already rejected multiple phones and a target still on USB.
+        # Every attempt uses an endpoint from the same authenticated announcement.
+        endpoints=self.wifi_candidates.get(serial,((None,None),))
+        last_error=None
+        async with asyncio.timeout(12):
+            for host,port in endpoints:
+                self.wifi_endpoint=host or ''
+                self.wifi_port=port
+                try:
+                    async with asyncio.timeout(4):
+                        async with await self.lockdown(serial) as ld:
+                            if int(ld.product_version.split('.')[0])<17:
+                                raise UserError('此直连版本面向 iOS 17.4 及以上系统。')
+                            if not await ld.get_developer_mode_status():
+                                raise UserError('请在 iPhone「设置 → 隐私与安全性 → 开发者模式」中开启开发者模式后重试。')
+                            name=ld.all_values.get('DeviceName','iPhone')
+                            version=ld.product_version
+                        await self.open_channel(serial)
+                        if not self.channel_ready():raise UserError('无线定位通道尚未就绪。')
+                        self.device_name,self.product_version=name,version
+                        return
+                except Exception as ex:
+                    last_error=ex
+                    await self.close(clear=False)
+        if last_error is not None:raise last_error
+        raise UserError('没有可用的已配对无线连接地址。')
 
     async def enable_wifi(self):
         from pymobiledevice3.usbmux import list_devices
@@ -103,15 +154,26 @@ class Engine:
         emit('wifi_enabled','有线准备完成，但尚未验证无线隧道。请拔线、选择无线方式并检测；若自动发现失败，可填写手机 Wi-Fi 的 IP 地址。')
 
     async def probe(self):
-        if self.mode=='Network' and self.wifi_host and self.stack is not None and self.tunnel is not None and self.tunnel.rsd is not None:
-            emit('device',f'{self.device_name}  ·  iOS {self.product_version} · Wi-Fi',
-                 connection='connected',transport='Network',usable=True,active=self.active)
+        if self.mode=='Network' and self.stack is not None:
+            was_active=self.active
+            try:
+                if not self.channel_ready():raise ConnectionError('wireless channel closed')
+                if await self.cable_present(self.serial):raise UserError('手机已插上 USB，请拔线后验证 Wi-Fi。')
+                # Fresh lockdown validation checks reachability/trust; local RSD
+                # references alone cannot prove that an idle phone is online.
+                async with await self.lockdown(self.serial):pass
+                emit('device',f'{self.device_name}  ·  iOS {self.product_version} · Wi-Fi',
+                     connection='connected',transport='Network',usable=True,active=self.active,discovery=self.discovery)
+            except Exception as ex:
+                await self.close(clear=False)
+                emit('device',friendly(ex,self.mode),connection='disconnected',transport='Network',usable=False,active=False)
+                if was_active:emit('session_lost','手机 Wi-Fi 连接已断开，定位会话已结束。',reason='wifi_disconnected')
             return
         try:
             ds=await self.devices()
-        except UserError as ex:
+        except (UserError,WirelessDiscoveryError) as ex:
             lost=self.active
-            if lost:await self.close(clear=False)
+            await self.close(clear=False)
             emit('device',str(ex),connection='disconnected',transport=self.mode,usable=False,active=False)
             if lost:emit('session_lost','手机 Wi-Fi 连接已断开，定位会话已结束。',reason='wifi_disconnected')
             return
@@ -129,15 +191,16 @@ class Engine:
             try:
                 if self.mode=='Network' and await self.cable_present(ds[0].serial):
                     raise UserError('已发现无线设备，但手机仍插着 USB。请拔线后重新检测。')
-                async with await self.lockdown(ds[0].serial) as ld:
-                    name=ld.all_values.get('DeviceName','iPhone')
-                    if self.mode=='Network' and self.wifi_host and self.stack is None:
-                        await self.open_channel(ds[0].serial)
-                    self.device_name=name
-                    self.product_version=ld.product_version
-                    emit('device',f'{name}  ·  iOS {ld.product_version} · {"Wi-Fi" if self.mode=="Network" else "USB"}',connection='connected',transport=self.mode,usable=True,active=self.active)
+                if self.mode=='Network':
+                    await self.open_network_channel(ds[0].serial)
+                else:
+                    async with await self.lockdown(ds[0].serial) as ld:
+                        self.device_name=ld.all_values.get('DeviceName','iPhone')
+                        self.product_version=ld.product_version
+                emit('device',f'{self.device_name}  ·  iOS {self.product_version} · {"Wi-Fi" if self.mode=="Network" else "USB"}',connection='connected',transport=self.mode,usable=True,active=self.active,discovery=self.discovery)
             except Exception as ex:
-                emit('device',('Wi-Fi 已发现，但尚未完成通信。' if self.mode=='Network' else 'USB 已连接，但尚未完成通信。')+friendly(ex),connection='connected',transport=self.mode,usable=False,active=self.active)
+                if self.mode=='Network':await self.close(clear=False)
+                emit('device',('Wi-Fi 已发现，但尚未完成定位通道验证。' if self.mode=='Network' else 'USB 已连接，但尚未完成通信。')+friendly(ex,self.mode),connection='connected',transport=self.mode,usable=False,active=self.active)
         if lost:
             emit('session_lost',('手机 Wi-Fi 连接已断开，定位会话已结束。' if self.mode=='Network' else '手机 USB 已断开，定位会话已结束。') if lost=='usb_disconnected' else '定位会话已中断，请重新点击修改定位。',reason=lost)
 
@@ -148,7 +211,7 @@ class Engine:
         stack=contextlib.AsyncExitStack()
         try:
             tunnel=UserspaceRsdTunnel(serial=serial,autopair=False,remotepairing_fallback=self.mode=='Network')
-            if self.mode=='Network' and self.wifi_host:
+            if self.mode=='Network' and self.wifi_endpoint:
                 # pymobiledevice3 11.17.0 selects its tunnel provider through this
                 # module-level helper. Redirect only the single aopen call; the
                 # provider remains owned by UserspaceRsdTunnel's exit stack.
@@ -158,7 +221,7 @@ class Engine:
                 async def direct_provider(selected,autopair,fallback):
                     if selected!=serial:raise UserError('无线隧道手机标识不匹配。')
                     service=await create_core_device_tunnel_service_using_remotepairing(
-                        serial,self.wifi_host,self.wifi_port,autopair=False)
+                        serial,self.wifi_endpoint,self.wifi_port,autopair=False)
                     return service,None
                 tunnel_module._create_no_root_tunnel_provider=direct_provider
                 try:rsd=await stack.enter_async_context(tunnel)
@@ -173,10 +236,13 @@ class Engine:
         self.stack,self.tunnel,self.location,self.serial=stack,tunnel,location,serial
 
     async def ensure(self):
-        if self.stack is not None and self.tunnel is not None and self.tunnel.rsd is not None:return
+        if self.channel_ready():return
         serial=await self.select()
         await self.close(clear=False)
         emit('status','正在通过 '+('Wi-Fi' if self.mode=='Network' else 'USB')+' 建立手机定位连接…')
+        if self.mode=='Network':
+            await self.open_network_channel(serial)
+            return
         async with await self.lockdown(serial) as ld:
             if int(ld.product_version.split('.')[0])<17:raise UserError('此直连版本面向 iOS 17.4 及以上系统。')
             if not await ld.get_developer_mode_status():raise UserError('请在 iPhone「设置 → 隐私与安全性 → 开发者模式」中手动开启，按提示重启并确认后重试。')
@@ -232,13 +298,13 @@ class Engine:
             if stack is not None:
                 with contextlib.suppress(Exception):await asyncio.wait_for(stack.aclose(),5)
 
-def friendly(error):
+def friendly(error,transport='USB'):
     kind=type(error).__name__
     if isinstance(error,UserError):return str(error)
     if isinstance(error,(ValueError,TypeError)):return '地点参数无效，请检查经纬度和坐标来源。'
-    if isinstance(error,TimeoutError):return '连接超时。请解锁手机、重新插拔数据线后重试；若正在首次下载组件，请确认网络可用。'
+    if isinstance(error,TimeoutError):return ('无线连接超时，请解锁手机并确认两端 Wi-Fi 可互访；也可填写手机当前 IP 后重试。' if transport=='Network' else '连接超时。请解锁手机、重新插拔数据线后重试；若正在首次下载组件，请确认网络可用。')
     if any(s in kind for s in ['Pair','Password','Locked','Trust']):return '手机尚未信任此电脑或屏幕已锁定。请解锁并在手机上确认信任，再重试。'
-    if any(s in kind for s in ['Connection','NoDevice','BrokenPipe','NotConnected']):return '手机连接已中断，请重新插拔数据线并解锁后重试。'
+    if any(s in kind for s in ['Connection','NoDevice','BrokenPipe','NotConnected']):return ('无线连接已中断，请解锁手机、检查 Wi-Fi 和当前 IP 后重新检测。' if transport=='Network' else '手机连接已中断，请重新插拔数据线并解锁后重试。')
     if 'DeveloperMode' in kind:return '请在手机中手动开启开发者模式，重启并确认后重试。'
     return f'本次操作未完成（{kind}）。请重新连接手机后重试。'
 
@@ -268,7 +334,8 @@ async def serve():
             except Exception as ex:
                 # Drop failed sessions so a subsequent click creates fresh connections.
                 if command.get('command')!='probe':await engine.close()
-                emit('error',friendly(ex),error_type=type(ex).__name__,session_ended=command.get('command')!='probe')
+                elif engine.mode=='Network':await engine.close(clear=False)
+                emit('error',friendly(ex,engine.mode),error_type=type(ex).__name__,session_ended=command.get('command')!='probe')
     finally:
         await engine.close()
 

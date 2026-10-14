@@ -20,7 +20,7 @@ partial class Controller {
  Process engine;JavaScriptSerializer json=new JavaScriptSerializer();Forms.NotifyIcon tray;UiState state=new UiState();StatusToast toast=new StatusToast();bool exiting,autoApply;long nextId;DateTime lastProbe=DateTime.MinValue,launched,probeStarted;
  DispatcherTimer timer;EventWaitHandle applySignal,showSignal;RegisteredWaitHandle applyWait,showWait;
  public Controller(bool background){
-  autoApply=background;Window=App.Load();Window.Title="iPhone 虚拟定位 · 2.5.0-beta.2 无线测试";Window.Icon=System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(App.Root,"source","app.ico")));Window.MaxHeight=SystemParameters.WorkArea.Height-30;
+  autoApply=background;Window=App.Load();Window.Title="iPhone 虚拟定位 · 2.5.0-beta.3 无线测试";Window.Icon=System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(App.Root,"source","app.ico")));Window.MaxHeight=SystemParameters.WorkArea.Height-30;
   place=Get<TextBox>("Place");longitude=Get<TextBox>("Longitude");latitude=Get<TextBox>("Latitude");source=Get<ComboBox>("Source");status=Get<TextBlock>("Status");device=Get<TextBlock>("Device");
   deviceHeading=Get<TextBlock>("DeviceHeading");statusHeading=Get<TextBlock>("StatusHeading");lastResult=Get<TextBlock>("LastResult");elapsed=Get<TextBlock>("Elapsed");progress=Get<ProgressBar>("Progress");deviceCard=Get<Border>("DeviceCard");resultCard=Get<Border>("ResultCard");
   apply=Get<Button>("Apply");restore=Get<Button>("Restore");save=Get<Button>("Save");refresh=Get<Button>("Refresh");wifiSetup=Get<Button>("WifiSetup");connectionMode=Get<ComboBox>("ConnectionMode");wifiHost=Get<TextBox>("WifiHost");
@@ -30,7 +30,7 @@ partial class Controller {
   tray=new Forms.NotifyIcon{Text="iPhone 虚拟定位 · 正在检测",Icon=new System.Drawing.Icon(Path.Combine(App.Root,"source","app.ico")),Visible=true};
   var menu=new Forms.ContextMenuStrip();menu.Items.Add("打开定位窗口",null,(s,e)=>Window.Dispatcher.BeginInvoke(new Action(Show)));
   menu.Items.Add("恢复真实定位",null,(s,e)=>Window.Dispatcher.BeginInvoke(new Action(()=>Send("clear"))));menu.Items.Add("退出并结束定位",null,(s,e)=>Window.Dispatcher.BeginInvoke(new Action(Exit)));tray.ContextMenuStrip=menu;tray.DoubleClick+=(s,e)=>Show();
-  applySignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_252_Apply");showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_252_Show");
+  applySignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_253_Apply");showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_253_Show");
   applyWait=ThreadPool.RegisterWaitForSingleObject(applySignal,(o,t)=>Window.Dispatcher.BeginInvoke(new Action(()=>Send("apply"))),null,-1,false);showWait=ThreadPool.RegisterWaitForSingleObject(showSignal,(o,t)=>Window.Dispatcher.BeginInvoke(new Action(Show)),null,-1,false);
   apply.Click+=(s,e)=>Send("apply");restore.Click+=(s,e)=>Send("clear");refresh.Click+=(s,e)=>{if(!state.Ready&&!state.Busy)RestartEngine();else Send("probe");};
   wifiSetup.Click+=(s,e)=>Send("enable_wifi");

@@ -7,7 +7,7 @@
  <ScrollViewer Background="#F4F7FC" Foreground="#25344C" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
  <StackPanel Margin="26,24,26,20">
   <TextBlock Text="iPhone 虚拟定位" FontSize="26" FontWeight="SemiBold" Foreground="#17263F"/>
-  <TextBlock Text="2.5.0-beta.2 · 无线连接测试" Margin="0,6,0,18" Foreground="#61718A"/>
+  <TextBlock Text="2.5.0-beta.3 · 无线连接测试" Margin="0,6,0,18" Foreground="#61718A"/>
   <TextBlock Text="连接方式" Margin="0,0,0,6"/>
   <ComboBox x:Name="ConnectionMode" SelectedIndex="0" Padding="8" Margin="0,0,0,7">
    <ComboBoxItem Tag="USB">USB 有线</ComboBoxItem>

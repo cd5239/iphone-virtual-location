@@ -25,11 +25,11 @@ static class App {
             if(args.Length==2&&args[0]=="--test-locations"){try{LocationTests.Run(args[1]);File.WriteAllText(Path.Combine(args[1],"result.txt"),"PASS: migration, multiple locations, selection persistence, update, invalid input, backup");}catch(Exception ex){File.WriteAllText(Path.Combine(args[1],"result.txt"),"FAIL: "+ex);Environment.ExitCode=1;}return;}
             if(args.Length==2&&args[0]=="--test-state"){try{UiStateTests.Run();File.WriteAllText(args[1],"PASS: UI operation state, reconnect, wireless setup, transport display.");}catch(Exception ex){File.WriteAllText(args[1],"FAIL: "+ex);Environment.ExitCode=1;}return;}
             if(args.Length==2&&args[0]=="--render") {Render(args[1]);return;}
-            if(Running("Local\\iPhoneDirectLocation_v2")||Running("Local\\iPhoneDirectLocation_v25_test")){
-                MessageBox.Show("请先从托盘退出旧版定位工具，再启动 2.5.0-beta.2。","iPhone 虚拟定位");return;
+            if(Running("Local\\iPhoneDirectLocation_v2")||Running("Local\\iPhoneDirectLocation_v25_test")||Running("Local\\iPhoneDirectLocation_v25_beta2")){
+                MessageBox.Show("请先从托盘退出旧版定位工具，再启动 2.5.0-beta.3。","iPhone 虚拟定位");return;
             }
-            bool fresh;using(var mutex=new Mutex(true,"Local\\iPhoneDirectLocation_v25_beta2",out fresh)) {
-                if(!fresh){try{using(var signal=EventWaitHandle.OpenExisting(args.Contains("--apply-background")?"Local\\iPhoneDirectLocation_252_Apply":"Local\\iPhoneDirectLocation_252_Show"))signal.Set();}catch{MessageBox.Show("工具正在启动，请稍后重试。","iPhone 虚拟定位");}return;}
+            bool fresh;using(var mutex=new Mutex(true,"Local\\iPhoneDirectLocation_v25_beta3",out fresh)) {
+                if(!fresh){try{using(var signal=EventWaitHandle.OpenExisting(args.Contains("--apply-background")?"Local\\iPhoneDirectLocation_253_Apply":"Local\\iPhoneDirectLocation_253_Show"))signal.Set();}catch{MessageBox.Show("工具正在启动，请稍后重试。","iPhone 虚拟定位");}return;}
                 var application=new Application();application.ShutdownMode=ShutdownMode.OnExplicitShutdown;
                 bool background=args.Contains("--apply-background");var controller=new Controller(background);application.MainWindow=controller.Window;
                 if(background)controller.StartHidden();else controller.Window.Show();application.Run();

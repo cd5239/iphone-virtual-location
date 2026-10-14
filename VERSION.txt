@@ -1,3 +1,3 @@
-2.5.0-beta.2
+2.5.0-beta.3
 Base release: 2.4.3 (main 7072fbf927b954ee73e60e3b937ea095e2da9ebd)
 Channel: local wireless test; not published

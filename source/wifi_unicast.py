@@ -14,6 +14,27 @@ class WirelessDiscoveryError(Exception):
     pass
 
 
+def authenticated_identifier(properties, pairs):
+    """Match an announcement to exactly one existing record; never auto-pair."""
+    from pymobiledevice3.remote.tunnel_service import PEER_ALT_IRK_KEY, validate_auth_tag
+
+    advertised_id, auth_tag = properties.get('identifier'), properties.get('authTag')
+    if not advertised_id or not auth_tag:
+        return None
+    matches = set()
+    for identifier, _, record in pairs:
+        alt_irk = record.get(PEER_ALT_IRK_KEY)
+        if not alt_irk:
+            continue
+        try:
+            if validate_auth_tag(alt_irk, advertised_id, auth_tag):
+                matches.add(identifier)
+        except (ValueError, TypeError):
+            # Malformed/untrusted TXT must not prevent other paired adverts.
+            continue
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
 def _query(host):
     from pymobiledevice3.bonjour import (
         REMOTEPAIRING_SERVICE_NAME, QTYPE_PTR, build_query, parse_mdns_message,
@@ -34,29 +55,29 @@ def _query(host):
 
 def _match(records):
     from pymobiledevice3.bonjour import REMOTEPAIRING_SERVICE_NAME, QTYPE_PTR, QTYPE_SRV, QTYPE_TXT
-    from pymobiledevice3.remote.tunnel_service import PEER_ALT_IRK_KEY, validate_auth_tag
     from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
 
     targets = {r.get('ptrdname') for r in records
                if r.get('type') == QTYPE_PTR and r.get('name') == REMOTEPAIRING_SERVICE_NAME}
     pairs = list(iter_remote_pair_records_by_identifier())
-    matches = []
+    matches = set()
     for target in targets:
         srv = next((r for r in records if r.get('type') == QTYPE_SRV and r.get('name') == target), None)
         txt = next((r for r in records if r.get('type') == QTYPE_TXT and r.get('name') == target), None)
-        if not srv or not txt or not 1 <= int(srv.get('port') or 0) <= 65535:
+        if not srv or not txt:
             continue
-        properties = txt.get('txt') or {}
-        advertised_id, auth_tag = properties.get('identifier'), properties.get('authTag')
-        if not advertised_id or not auth_tag:
+        try:
+            port = int(srv.get('port') or 0)
+        except (ValueError, TypeError):
             continue
-        for identifier, _, record in pairs:
-            alt_irk = record.get(PEER_ALT_IRK_KEY)
-            if alt_irk and validate_auth_tag(alt_irk, advertised_id, auth_tag):
-                matches.append((identifier, int(srv['port'])))
+        if not 1 <= port <= 65535:
+            continue
+        identifier = authenticated_identifier(txt.get('txt') or {}, pairs)
+        if identifier is not None:
+            matches.add((identifier, port))
     if len(matches) != 1:
         raise WirelessDiscoveryError('已收到手机的无线公告，但未能与本机唯一的已配对手机匹配。请重新用 USB 点击无线准备。')
-    return matches[0]
+    return next(iter(matches))
 
 
 async def discover(host):

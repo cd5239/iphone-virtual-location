@@ -41,11 +41,13 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
             all_values={'DeviceName':'test'};product_version='26.6.2'
             async def __aenter__(self):return self
             async def __aexit__(self,*a):pass
+            async def get_developer_mode_status(self):return True
         async def lockdown(serial):return Lockdown()
-        async def bad_tunnel(serial):raise ConnectionError('tunnel failed')
+        bad_tunnel=AsyncMock(side_effect=ConnectionError('tunnel failed'))
         e.devices=devices;e.cable_present=cable;e.lockdown=lockdown;e.open_channel=bad_tunnel
         with contextlib.redirect_stdout(io.StringIO()) as output:await e.probe()
         self.assertFalse(json.loads(output.getvalue().splitlines()[0])['usable'])
+        bad_tunnel.assert_awaited_once()
     async def test_wireless_selection_excludes_usb_and_requires_unplug(self):
         e=Engine();e.mode='Network'
         both=[SimpleNamespace(serial='phone',connection_type='USB'),SimpleNamespace(serial='phone',connection_type='Network')]
@@ -61,11 +63,15 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
             all_values={'DeviceName':'test'};product_version='26.6.2'
             async def __aenter__(self):return self
             async def __aexit__(self,*a):pass
+            async def get_developer_mode_status(self):return True
         async def lockdown(serial):return Lockdown()
-        e.all_devices=inventory;e.lockdown=lockdown
+        async def channel(serial):
+            e.stack=SimpleNamespace(aclose=AsyncMock());e.tunnel=SimpleNamespace(rsd=object());e.location=object();e.serial=serial
+        e.all_devices=inventory;e.lockdown=lockdown;e.open_channel=AsyncMock(side_effect=channel)
         with contextlib.redirect_stdout(io.StringIO()) as output:await e.probe()
         result=json.loads(output.getvalue().splitlines()[0])
         self.assertEqual(result['transport'],'Network');self.assertTrue(result['usable'])
+        e.open_channel.assert_awaited_once_with('phone')
     async def test_invalid_mode_rejected_without_mutation(self):
         e=Engine()
         with self.assertRaises(UserError):await e.set_mode('Other')
