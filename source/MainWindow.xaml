@@ -2,22 +2,40 @@
  <Window.Resources>
   <Style TargetType="TextBox"><Setter Property="Padding" Value="10,8"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="BorderBrush" Value="#CCD5E2"/></Style>
   <Style TargetType="Button"><Setter Property="Padding" Value="14,10"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,0,8"/></Style>
+  <Style x:Key="PrimaryAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+   <Setter Property="Background" Value="#2563EB"/><Setter Property="Foreground" Value="White"/>
+   <Setter Property="BorderThickness" Value="0"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#1D4ED8"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#1E40AF"/></Trigger>
+     <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Background" Value="#CBD5E1"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+   <Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#64748B"/><Setter Property="Cursor" Value="Arrow"/></Trigger></Style.Triggers>
+  </Style>
   <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
  </Window.Resources>
  <ScrollViewer Background="#F4F7FC" Foreground="#25344C" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
  <StackPanel Margin="26,24,26,20">
   <TextBlock Text="iPhone 虚拟定位" FontSize="26" FontWeight="SemiBold" Foreground="#17263F"/>
-  <TextBlock Text="2.5.0-beta.3 · 无线连接测试" Margin="0,6,0,18" Foreground="#61718A"/>
+  <TextBlock Text="2.5.1 · USB / Wi-Fi 连接" Margin="0,6,0,18" Foreground="#61718A"/>
   <TextBlock Text="连接方式" Margin="0,0,0,6"/>
   <ComboBox x:Name="ConnectionMode" SelectedIndex="0" Padding="8" Margin="0,0,0,7">
    <ComboBoxItem Tag="USB">USB 有线</ComboBoxItem>
-   <ComboBoxItem Tag="Network">Wi-Fi 无线测试</ComboBoxItem>
+   <ComboBoxItem Tag="Network">Wi-Fi 无线</ComboBoxItem>
   </ComboBox>
   <Button x:Name="WifiSetup" Content="首次无线准备（需 USB）" Padding="8,6" Margin="0,0,0,6"/>
   <TextBlock Text="首次先插线准备；随后拔线、保持同一局域网。" FontSize="12" Foreground="#61718A" Margin="0,0,0,8"/>
   <TextBlock Text="手机 Wi-Fi IP（自动发现失败时填写）" Margin="0,0,0,6"/>
-  <TextBox x:Name="WifiHost" Margin="0,0,0,5"/>
-  <TextBlock Text="在手机“设置 → 无线局域网 → 当前网络 ⓘ”查看 IP；修改后点重新检测。" FontSize="12" Foreground="#61718A" Margin="0,0,0,14"/>
+  <Grid Margin="0,0,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <TextBox x:Name="WifiHost"/>
+   <Button x:Name="WifiDetect" Grid.Column="1" Content="检测" Margin="8,0,0,0" Padding="14,8" ToolTip="切换到 Wi-Fi 并重新检测；IP 留空时自动发现已配对手机。"/>
+  </Grid>
+  <TextBlock Text="在手机“设置 → 无线局域网 → 当前网络 ⓘ”查看 IP；点“检测”会切换到 Wi-Fi，留空可自动发现。" FontSize="12" Foreground="#61718A" Margin="0,0,0,14"/>
   <Border x:Name="DeviceCard" Padding="13" CornerRadius="8" Background="#E7EFFB" Margin="0,0,0,14"><StackPanel><TextBlock x:Name="DeviceHeading" Text="正在检测手机…" FontWeight="SemiBold" Foreground="#284B78"/><TextBlock x:Name="Device" Text="正在启动连接组件" Margin="0,5,0,0" FontSize="12" Foreground="#61718A"/></StackPanel></Border>
   <Border x:Name="ResultCard" Padding="13" Background="#E7EFFB" CornerRadius="8" Margin="0,0,0,16"><StackPanel>
    <TextBlock x:Name="StatusHeading" Text="正在启动连接组件…" FontWeight="SemiBold" FontSize="18" Foreground="#284B78"/>
@@ -39,7 +57,7 @@
    <ComboBoxItem Tag="GCJ02">高德 / 腾讯地图（GCJ-02）</ComboBoxItem>
    <ComboBoxItem Tag="WGS84">GPS 原始经纬度（WGS84）</ComboBoxItem>
   </ComboBox>
-  <Button x:Name="Apply" Content="修改定位" Background="#2563EB" Foreground="White" BorderThickness="0" FontSize="17" FontWeight="SemiBold" Padding="14"/>
+  <Button x:Name="Apply" Style="{StaticResource PrimaryAction}" Content="修改定位" FontSize="17" FontWeight="SemiBold" Padding="14"/>
   <UniformGrid Columns="2"><Button x:Name="Save" Content="保存当前地点" Margin="0,0,6,8"/><Button x:Name="AddLocation" Content="另存为新地点" Margin="6,0,0,8"/></UniformGrid>
   <Button x:Name="Restore" Content="恢复真实定位"/>
   <Button x:Name="Refresh" Content="重新检测手机" Background="Transparent" BorderThickness="0" Foreground="#315B97" Padding="8,4"/>

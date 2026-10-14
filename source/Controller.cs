@@ -16,34 +16,36 @@ using Forms=System.Windows.Forms;
 
 partial class Controller {
  public Window Window;
- TextBox place,longitude,latitude,wifiHost;ComboBox source,connectionMode;TextBlock status,device,deviceHeading,statusHeading,lastResult,elapsed;Border deviceCard,resultCard;ProgressBar progress;Button apply,restore,save,refresh,wifiSetup;
- Process engine;JavaScriptSerializer json=new JavaScriptSerializer();Forms.NotifyIcon tray;UiState state=new UiState();StatusToast toast=new StatusToast();bool exiting,autoApply;long nextId;DateTime lastProbe=DateTime.MinValue,launched,probeStarted;
+ TextBox place,longitude,latitude,wifiHost;ComboBox source,connectionMode;TextBlock status,device,deviceHeading,statusHeading,lastResult,elapsed;Border deviceCard,resultCard;ProgressBar progress;Button apply,restore,save,refresh,wifiSetup,wifiDetect;
+ Process engine;JavaScriptSerializer json=new JavaScriptSerializer();Forms.NotifyIcon tray;UiState state=new UiState();StatusToast toast=new StatusToast();bool exiting,autoApply,suppressModeProbe,wifiDetectionRequested;long nextId;DateTime lastProbe=DateTime.MinValue,launched,probeStarted;
+ readonly Action<Dictionary<string,object>> requestObserver;
  DispatcherTimer timer;EventWaitHandle applySignal,showSignal;RegisteredWaitHandle applyWait,showWait;
- public Controller(bool background){
-  autoApply=background;Window=App.Load();Window.Title="iPhone 虚拟定位 · 2.5.0-beta.3 无线测试";Window.Icon=System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(App.Root,"source","app.ico")));Window.MaxHeight=SystemParameters.WorkArea.Height-30;
+ public Controller(bool background,Action<Dictionary<string,object>> requestObserver=null){
+  this.requestObserver=requestObserver;
+  autoApply=background;Window=App.Load();Window.Title="iPhone 虚拟定位 · 2.5.1";Window.Icon=System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(App.Root,"source","app.ico")));Window.MaxHeight=SystemParameters.WorkArea.Height-30;
   place=Get<TextBox>("Place");longitude=Get<TextBox>("Longitude");latitude=Get<TextBox>("Latitude");source=Get<ComboBox>("Source");status=Get<TextBlock>("Status");device=Get<TextBlock>("Device");
   deviceHeading=Get<TextBlock>("DeviceHeading");statusHeading=Get<TextBlock>("StatusHeading");lastResult=Get<TextBlock>("LastResult");elapsed=Get<TextBlock>("Elapsed");progress=Get<ProgressBar>("Progress");deviceCard=Get<Border>("DeviceCard");resultCard=Get<Border>("ResultCard");
-  apply=Get<Button>("Apply");restore=Get<Button>("Restore");save=Get<Button>("Save");refresh=Get<Button>("Refresh");wifiSetup=Get<Button>("WifiSetup");connectionMode=Get<ComboBox>("ConnectionMode");wifiHost=Get<TextBox>("WifiHost");
+  apply=Get<Button>("Apply");restore=Get<Button>("Restore");save=Get<Button>("Save");refresh=Get<Button>("Refresh");wifiSetup=Get<Button>("WifiSetup");wifiDetect=Get<Button>("WifiDetect");connectionMode=Get<ComboBox>("ConnectionMode");wifiHost=Get<TextBox>("WifiHost");
   string modeFile=Path.Combine(App.Root,"connection-mode.txt");if(File.Exists(modeFile)&&File.ReadAllText(modeFile).Trim()=="Network")connectionMode.SelectedIndex=1;
   string hostFile=Path.Combine(App.Root,"wifi-host.txt");if(File.Exists(hostFile))wifiHost.Text=File.ReadAllText(hostFile).Trim();
   state.Transport=Mode;InitLocationControls();
   tray=new Forms.NotifyIcon{Text="iPhone 虚拟定位 · 正在检测",Icon=new System.Drawing.Icon(Path.Combine(App.Root,"source","app.ico")),Visible=true};
   var menu=new Forms.ContextMenuStrip();menu.Items.Add("打开定位窗口",null,(s,e)=>Window.Dispatcher.BeginInvoke(new Action(Show)));
   menu.Items.Add("恢复真实定位",null,(s,e)=>Window.Dispatcher.BeginInvoke(new Action(()=>Send("clear"))));menu.Items.Add("退出并结束定位",null,(s,e)=>Window.Dispatcher.BeginInvoke(new Action(Exit)));tray.ContextMenuStrip=menu;tray.DoubleClick+=(s,e)=>Show();
-  applySignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_253_Apply");showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_253_Show");
+  applySignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_251_Apply");showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\iPhoneDirectLocation_251_Show");
   applyWait=ThreadPool.RegisterWaitForSingleObject(applySignal,(o,t)=>Window.Dispatcher.BeginInvoke(new Action(()=>Send("apply"))),null,-1,false);showWait=ThreadPool.RegisterWaitForSingleObject(showSignal,(o,t)=>Window.Dispatcher.BeginInvoke(new Action(Show)),null,-1,false);
   apply.Click+=(s,e)=>Send("apply");restore.Click+=(s,e)=>Send("clear");refresh.Click+=(s,e)=>{if(!state.Ready&&!state.Busy)RestartEngine();else Send("probe");};
   wifiSetup.Click+=(s,e)=>Send("enable_wifi");
+  wifiDetect.Click+=(s,e)=>RequestWifiDetection();
   connectionMode.SelectionChanged+=(s,e)=>{
    if(state.Busy||state.Active)return;
-   try{File.WriteAllText(modeFile,Mode);}catch{toast.Show("连接方式未保存","下次启动时需要重新选择。","error");}
+   try{if(requestObserver==null)File.WriteAllText(modeFile,Mode);}catch{toast.Show("连接方式未保存","下次启动时需要重新选择。","error");}
    state.Transport=Mode;state.Connection="unknown";state.Usable=false;state.Title=Mode=="Network"?"正在检测 Wi-Fi 手机…":"正在检测 USB 手机…";state.Detail="请稍候。";state.Tone="info";lastProbe=DateTime.MinValue;Render();
-   if(state.Ready&&!state.ProbePending)Send("probe");
+   if(!suppressModeProbe&&state.Ready&&!state.ProbePending)Send("probe");
   };
   wifiHost.LostFocus+=(s,e)=>{
    if(state.Busy||state.Active)return;
-   try{File.WriteAllText(hostFile,wifiHost.Text.Trim());}catch{toast.Show("手机地址未保存","下次启动时需要重新填写。","error");}
-   if(Mode=="Network") {lastProbe=DateTime.MinValue;if(state.Ready&&!state.ProbePending)Send("probe");}
+   SaveWifiHost();
   };
   save.Click+=(s,e)=>{try{SaveSettings();toast.Show("地点已保存","下次一键修改会使用此地点。","success");}catch(Exception ex){Fail("保存失败",ex.Message);}};
   Window.Closing+=(s,e)=>{if(exiting)return;e.Cancel=true;if(state.Active||state.Busy){Window.Hide();toast.Show("工具仍在托盘运行","右键托盘可恢复真实定位或退出。","info");}else Exit();};
@@ -56,7 +58,25 @@ partial class Controller {
  string Mode{get{return Convert.ToString(((ComboBoxItem)connectionMode.SelectedItem).Tag);}}
  static double Number(string text,double limit){double n;if(!double.TryParse(text,NumberStyles.Float,CultureInfo.InvariantCulture,out n)||double.IsNaN(n)||double.IsInfinity(n)||Math.Abs(n)>limit)throw new Exception("请填写有效经纬度：经度 -180～180，纬度 -90～90。");return n;}
  void SaveSettings(){SavePlace(false);}
+ void SaveWifiHost(){
+  try{if(requestObserver==null)File.WriteAllText(Path.Combine(App.Root,"wifi-host.txt"),wifiHost.Text.Trim());}catch{toast.Show("手机地址未保存","下次启动时需要重新填写。","error");}
+ }
+ void RequestWifiDetection(){
+  if(state.Busy||state.Active)return;
+  SaveWifiHost();wifiDetectionRequested=true;
+  suppressModeProbe=true;try{connectionMode.SelectedIndex=1;}finally{suppressModeProbe=false;}
+  lastProbe=DateTime.MinValue;
+  if(!state.Ready){RestartEngine();return;}
+  DispatchWifiDetection();
+ }
+ void DispatchWifiDetection(){
+  if(!wifiDetectionRequested||!state.Ready||state.ProbePending||state.Busy||state.Active)return;
+  wifiDetectionRequested=false;state.Connection="unknown";state.Usable=false;state.Transport="Network";
+  state.Title="正在检测 Wi-Fi 手机…";state.Detail="请保持手机解锁，确认已拔掉 USB。";state.Tone="info";
+  Send("probe");
+ }
  void StartEngine(){
+  if(requestObserver!=null){Receive(json.Serialize(new Dictionary<string,object>{{"event","ready"}}));return;}
   if(engine!=null)return;
   try{
    var p=new ProcessStartInfo(Path.Combine(App.Root,"engine","LocationEngine.exe"),"--state-dir \""+Path.Combine(App.Root,"state")+"\""){UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=new UTF8Encoding(false),StandardErrorEncoding=Encoding.UTF8,WorkingDirectory=App.Root};
@@ -79,7 +99,8 @@ partial class Controller {
    var value=new Dictionary<string,object>{{"command",command},{"request_id",++nextId},{"mode",Mode},{"wifi_host",wifiHost.Text.Trim()}};
    if(command=="apply"){SaveSettings();value["longitude"]=Number(longitude.Text,180);value["latitude"]=Number(latitude.Text,90);value["source"]=SourceValue;}
    state.Begin(command,nextId);if(command=="probe"){lastProbe=probeStarted=DateTime.Now;}Render();Notify();
-   engine.StandardInput.WriteLine(json.Serialize(value));engine.StandardInput.Flush();
+   if(requestObserver!=null)requestObserver(value);
+   else {engine.StandardInput.WriteLine(json.Serialize(value));engine.StandardInput.Flush();}
   }catch(Exception ex){if(command=="probe")state.ProbePending=false;Fail("操作未能开始",ex.Message);}
  }
  void Receive(string line){
@@ -88,8 +109,9 @@ partial class Controller {
   try{msg=json.Deserialize<Dictionary<string,object>>(line);if(!msg.ContainsKey("event"))return;}
   catch{if(line.TrimStart().StartsWith("{"))Fail("连接反馈解析失败","请点击重新检测手机重试。");return;}
   state.Handle(msg);Render();Notify();
-  if(Convert.ToString(msg["event"])=="ready"){Send("probe");if(autoApply){autoApply=false;Send("apply");}}
+  if(Convert.ToString(msg["event"])=="ready"){if(wifiDetectionRequested)DispatchWifiDetection();else Send("probe");if(autoApply){autoApply=false;Send("apply");}}
   else if(Convert.ToString(msg["event"])=="applied"||Convert.ToString(msg["event"])=="restored"||Convert.ToString(msg["event"])=="wifi_enabled")lastProbe=DateTime.MinValue;
+  DispatchWifiDetection();
  }
  void Fail(string title,string detail){state.Fail(title,detail);Render();Notify();}
  void Notify(){if(state.NoticeTitle==null)return;toast.Show(state.NoticeTitle,state.NoticeText,state.NoticeTone);state.NoticeTitle=null;}
@@ -105,13 +127,14 @@ partial class Controller {
   progress.Visibility=elapsed.Visibility=state.Busy?Visibility.Visible:Visibility.Collapsed;
   apply.Content=state.Operation=="apply"?"正在修改…":state.Busy?"请等待当前操作":!state.Ready?"正在准备连接…":state.Connection!="unknown"&&!state.Usable?"等待手机就绪":"修改定位";
   apply.IsEnabled=state.CanApply;restore.IsEnabled=state.Ready&&!state.Busy&&(state.Active||state.Usable);refresh.IsEnabled=!state.Busy&&!state.ProbePending;
+  wifiDetect.IsEnabled=!state.Busy&&!state.Active&&!state.ProbePending;wifiDetect.Content=state.ProbePending&&Mode=="Network"?"检测中…":"检测";
   save.IsEnabled=place.IsEnabled=longitude.IsEnabled=latitude.IsEnabled=source.IsEnabled=!state.Busy;connectionMode.IsEnabled=wifiHost.IsEnabled=!state.Busy&&!state.Active;wifiSetup.IsEnabled=state.Ready&&!state.Busy&&!state.Active;RenderLocationControls();
-  tray.Text="虚拟定位测试版 · "+(state.Busy?"正在操作":state.Active?"定位运行中":state.Usable?"手机已连接":"等待手机");
+  tray.Text="iPhone 虚拟定位 · "+(state.Busy?"正在操作":state.Active?"定位运行中":state.Usable?"手机已连接":"等待手机");
  }
  void Tick(){
   if(exiting)return;
   if(state.Busy){double seconds=(DateTime.Now-state.Started).TotalSeconds;elapsed.Text="已等待 "+((int)seconds)+" 秒 · 请保持连接稳定";if(seconds>270){state.Active=false;Fail("操作超时，未确认成功","连接组件未及时响应。请重新检测后再试。");RestartEngine();}}
-  else if(state.Ready&&!state.ProbePending&&(DateTime.Now-lastProbe).TotalSeconds>=3)Send("probe");
+  else if(state.Ready&&!state.ProbePending&&!wifiHost.IsKeyboardFocusWithin&&(DateTime.Now-lastProbe).TotalSeconds>=3)Send("probe");
   if(state.ProbePending&&(DateTime.Now-probeStarted).TotalSeconds>25&&!state.Busy){state.ProbePending=false;state.Ready=false;Fail("设备检测超时","点击“重新检测手机”重试。");}
   if(!state.Ready&&engine!=null&&(DateTime.Now-launched).TotalSeconds>25&&!state.Busy){var old=engine;engine=null;try{old.Kill();}catch{}Fail("连接组件启动超时","点击“重新检测手机”重试。");}
  }

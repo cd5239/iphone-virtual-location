@@ -43,7 +43,7 @@ class UiState {
   if(!Busy||id!=OperationId)return;
   if(ev=="wifi_enabled"){
    Operation="";Tone="success";Title="有线准备完成 · 待无线验证";Detail=message;LastResult=DateTime.Now.ToString("HH:mm:ss")+"  "+Title;
-   NoticeTitle=Title;NoticeText="拔掉数据线后，选择 Wi-Fi 无线测试并重新检测。";NoticeTone="success";return;
+   NoticeTitle=Title;NoticeText="拔掉数据线后，点击手机 IP 右侧“检测”连接 Wi-Fi。";NoticeTone="success";return;
   }
   if(ev=="applied"||ev=="restored"){
    Operation="";Active=ev=="applied";Connection="connected";Usable=true;Tone=Active?"success":"pending";

@@ -6,6 +6,7 @@ $argsList=@('/nologo','/target:winexe','/platform:x64','/optimize+',"/win32icon:
 $argsList+=$refs|ForEach-Object{"/r:$_"}
 $argsList+="$PSScriptRoot\App.cs"
 $argsList+="$PSScriptRoot\Controller.cs"
+$argsList+="$PSScriptRoot\ControllerInteractionTests.cs"
 $argsList+="$PSScriptRoot\Locations.cs"
 $argsList+="$PSScriptRoot\LocationControls.cs"
 $argsList+="$PSScriptRoot\LocationTests.cs"

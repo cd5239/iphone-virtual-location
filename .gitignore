@@ -11,3 +11,7 @@ location.xml
 locations.xml
 locations.xml.*
 *.tmp
+wifi-host.txt
+connection-mode.txt
+.build-tools/
+*.log
